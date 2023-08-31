@@ -142,7 +142,7 @@ if int(settings.get("pip_installed")) != 1:
         subprocess.check_output("pip")
     except:
         try:
-            subprocess.check_output([sys.executable, "-m", "pip"])
+            subprocess.check_output([sys.executable, " -m", "pip"])
         except:
             pip_found = False
 
@@ -160,7 +160,7 @@ if int(settings.get("pip_installed")) != 1:
 def pip_install(packageName: str):
     try:
         logging.info(f"attempting to install {packageName}")
-        subprocess.run([sys.executable, "py" "-m", "install", packageName])
+        subprocess.run(["pip" "-m", "install", packageName])
     except:
         logging.warning(
             f"failed to install {packageName} using py -m pip, trying raw pip request"
@@ -243,7 +243,7 @@ except:
 # end non-standard imports
 
 AVOID_LIST = ["EdgeWare", "AppData"]  # default avoid list for fill/replace
-FILE_TYPES = ["png", "jpg", "jpeg"]  # recognized file types for replace
+FILE_TYPES = ["png", "jpg", "jpeg", "gif"]  # recognized file types for replace
 
 
 @dataclass
@@ -424,7 +424,7 @@ AUDIO = []
 try:
     # TODO: Match only audio files
     for audio_file in Resource.AUDIO.glob("**/*"):
-        AUDIO.append(audio_file)
+        AUDIO.append(str(audio_file).replace(" ", "%20"))
     logging.info("audio resources found")
 except Exception as e:
     logging.warning(f"no audio resource folder found\n\tReason: {e}")
@@ -817,7 +817,6 @@ def download_web_resources():
 #       replace: will only happen one single time in the run of the application, but checks ALL folders
 def annoy():
     global MITOSIS_LIVE
-
     roll_for_initiative()
     if not MITOSIS_LIVE and (MITOSIS_MODE or LOWKEY_MODE) and HAS_IMAGES:
         utils.run_popup_script()
@@ -880,7 +879,6 @@ def roll_for_initiative():
                 "Prompt Error", "Could not start prompt.\n[" + str(e) + "]"
             )
             logging.critical(f"failed to start prompt.pyw\n\tReason: {e}")
-
 
 def rotate_wallpapers():
     prv = "default"
