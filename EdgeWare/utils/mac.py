@@ -140,32 +140,14 @@ def make_shortcut(
         script_path = str((path / f"{script_or_command}").absolute())
         script_or_command = [sys.executable, script_path]
 
-    shortcut_content = f"""[Desktop Entry]
-    Version=1.0
-    Name={title}
-    Exec={shlex.join(script_or_command)}
-    Icon={str(icon.absolute())}
-    Terminal=false
-    Type=Application
-    Categories=Application;
+    shortcut_content = f"""#!/bin/zsh
+    {shlex.join(script_or_command)}
     """
 
-    file_name = f"{file_name}.desktop"
+    file_name = f"{file_name}.command"
     desktop_file = Path(os.path.expanduser("~/Desktop")) / file_name
-    try:
-        desktop_file.write_text(shortcut_content)
-        if _get_desktop_environment() == "gnome":
-            subprocess.run(
-                [
-                    "gio",
-                    "set",
-                    str(desktop_file.absolute()),
-                    "metadata::trusted",
-                    "true",
-                ]
-            )
-    except:
-        return False
+    desktop_file.write_text(shortcut_content)
+    desktop_file.chmod(0o0777)
     return True
 
 
