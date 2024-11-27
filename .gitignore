@@ -1,5 +1,6 @@
+.venv/
 EdgeWare/logs
 EdgeWare/resource
 EdgeWare/config.cfg
-
+cache/*
 __pycache__

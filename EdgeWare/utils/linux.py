@@ -6,11 +6,13 @@ import re
 import shlex
 import sys
 from tkinter import messagebox
+from typing import Optional, Union
 from Xlib.display import Display
 from Xlib.ext import randr
 import subprocess
-from utils.area import Area
-from utils.dependencies import DEPENDENCIES
+
+from EdgeWare.utils.area import Area
+from EdgeWare.utils.dependencies import DEPENDENCIES
 
 
 def find_mode(id, modes):
@@ -52,7 +54,7 @@ def monitor_areas():  # all that matters from this is list(mapObj[monitor index]
     return areas
 
 
-def hide_file(path: Path | str):
+def hide_file(path: Union[Path, str]):
     if isinstance(path, str):
         path = Path(path)
     hidden_path = path.parent / f".{path.name}"
@@ -60,7 +62,7 @@ def hide_file(path: Path | str):
         path.rename(hidden_path)
 
 
-def expose_file(path: Path | str):
+def expose_file(path: Union[Path, str]):
     if isinstance(path, str):
         path = Path(path)
     hidden_path = path.parent / f".{path.name}"
@@ -68,7 +70,7 @@ def expose_file(path: Path | str):
         hidden_path.rename(path)
 
 
-def check_dependencies() -> tuple[list[DEPENDENCIES], str]:
+def check_dependencies() -> "tuple[list[DEPENDENCIES], str]":
     missing_dependencies: list[DEPENDENCIES] = []
     messages: list[str] = []
     try:
@@ -78,12 +80,33 @@ def check_dependencies() -> tuple[list[DEPENDENCIES], str]:
         messages.append("Couldn't find dependency FFMPEG.")
 
     try:
-        import sounddevice
+        import tkinter
+    except Exception as e:
+        if len(e.args) == 1 and e.args[0] == "Tkinter library not found":
+            missing_dependencies.append(DEPENDENCIES.TKINTER)
+            messages.append(
+                f"""{e.args[0]}(Search for: 'libportaudio2' or 'libportaudio-dev')
+                    See: https://python-sounddevice.readthedocs.io/en/0.5.1/installation.html"""
+            )
+
+    try:
+        import wheel
+    except Exception as e:
+        if len(e.args) == 1 and e.args[0] == "Wheel library not found":
+            missing_dependencies.append(DEPENDENCIES.WHEEL)
+            messages.append(
+                f"""{e.args[0]}(Search for: 'libportaudio2' or 'libportaudio-dev')
+                    See: https://python-sounddevice.readthedocs.io/en/0.5.1/installation.html"""
+            )
+
+    try:
+        import playsound
     except Exception as e:
         if len(e.args) == 1 and e.args[0] == "PortAudio library not found":
             missing_dependencies.append(DEPENDENCIES.PORT_AUDIO)
             messages.append(
-                f"{e.args[0]}(Search for: 'libportaudio2' or 'libportaudio-dev')"
+                f"""{e.args[0]}(Search for: 'libportaudio2' or 'libportaudio-dev')
+                    See: https://python-sounddevice.readthedocs.io/en/0.5.1/installation.html"""
             )
 
     message = ""
@@ -97,7 +120,7 @@ def check_dependencies() -> tuple[list[DEPENDENCIES], str]:
 first_run = True
 
 
-def set_wallpaper(wallpaper_path: Path | str):
+def set_wallpaper(wallpaper_path: Union[Path, str]):
     global first_run
     if isinstance(wallpaper_path, Path):
         wallpaper_path = str(wallpaper_path.absolute())
@@ -409,10 +432,10 @@ def does_desktop_shortcut_exists(name: str):
 
 def make_shortcut(
     path: Path,
-    icon: Path | str,
-    script_or_command: str | list[str],
-    title: str | None = None,
-    file_name: str | None = None,
+    icon: Union[Path, str],
+    script_or_command: "Union[str, list[str]]",
+    title: Optional[str] = None,
+    file_name: Optional[str] = None,
 ) -> bool:
     if title is None:
         if isinstance(script_or_command, str):
@@ -464,7 +487,7 @@ def make_shortcut(
 # FIXME: Shouldn't be started with profile as it is not made to launch GUI application.
 # Another problem is that VSCODE run .profile, and so run edgeware on start. Tempfix
 def toggle_run_at_startup(path: Path, state: bool):
-    command = f"{sys.executable} {str((path / 'start.pyw').absolute())}&"
+    command = f"{sys.executable} {str((path / 'start.py').absolute())}&"
 
     edgeware_content = f"""############## EDGEWARE ##############
 if [[ ! "${{GIO_LAUNCHED_DESKTOP_FILE}}" == "/usr/share/applications/code.desktop" ]] && [[ ! "${{TERM_PROGRAM}}" == "vscode" ]]; then
@@ -475,11 +498,20 @@ fi
 
     edgeware_profile = Path(os.path.expanduser("~/.profile"))
 
-    profile = edgeware_profile.read_text()
-    edgeware_profile.with_name(".profile_ew_backup").write_text(profile)
+    profile = ""
+    if not edgeware_profile.exists():
+        edgeware_profile.touch()
+    else:
+        profile = edgeware_profile.read_text()
+        edgeware_profile.with_name(".profile_ew_backup").write_text(profile)
 
     if state:
+        if edgeware_content in profile:
+            return
         profile += edgeware_content
     else:
+        if not edgeware_content in profile:
+            return
         profile = profile.replace(edgeware_content, "")
+
     edgeware_profile.write_text(profile)

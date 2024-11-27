@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from typing import Optional, Tuple
 from utils.area import Area
 import logging
 
@@ -18,7 +19,7 @@ class RECT(ctypes.Structure):  # rect class for containing monitor info
         ("bottom", ctypes.c_long),
     ]
 
-    def dump(self) -> tuple[int, int, int, int]:
+    def dump(self) -> "tuple[int, int, int, int]":
         return tuple(map(int, (self.left, self.top, self.right, self.bottom)))
 
 
@@ -100,8 +101,8 @@ def _create_shortcut_script(
     path: Path,
     icon: str,
     script: str,
-    title: str | None = None,
-    startup_path: str | None = None,
+    title: Optional[str] = None,
+    startup_path: Optional[str] = None,
 ):
     # strings for batch script to write vbs script to create shortcut on desktop
     # stupid and confusing? yes. the only way i could find to do this? also yes.
@@ -121,7 +122,7 @@ def _create_shortcut_script(
         f'echo oLink.WorkingDirectory = "{path_str}\\" >> %SCRIPT%\n',
         f'echo oLink.IconLocation = "{path_str}\\default_assets\\{icon}_icon.ico" >> %SCRIPT%\n',
         f'echo oLink.TargetPath = "{sys.executable}" >> %SCRIPT%\n',
-        f'echo oLink.Arguments = "{path_str}\\{script}" >> %SCRIPT%\n',
+        f'echo oLink.Arguments = "-m EdgeWare.start" >> %SCRIPT%"',
         "echo oLink.Save >> %SCRIPT%\n",
         "cscript /nologo %SCRIPT%\n",
         "del %SCRIPT%",
@@ -139,11 +140,15 @@ def make_shortcut(
     path: Path,
     icon: str,
     script: str,
-    title: str | None = None,
-    startup_path: str | None = None,
+    title: Optional[str] = None,
+    startup_path: Optional[str] = None,
 ) -> bool:
     success = False
-    with tempfile.NamedTemporaryFile("w", suffix=".bat", delete=False, ) as bat:
+    with tempfile.NamedTemporaryFile(
+        "w",
+        suffix=".bat",
+        delete=False,
+    ) as bat:
         bat.writelines(
             _create_shortcut_script(path, icon, script, title, startup_path)
         )  # write built shortcut script text to temporary batch file
@@ -157,7 +162,7 @@ def make_shortcut(
         logging.warning(
             f"failed to call or remove temp batch file for making shortcuts\n\tReason: {e}"
         )
-    
+
     if os.path.exists(bat.name):
         os.remove(bat.name)
 
@@ -167,16 +172,20 @@ def make_shortcut(
 def toggle_run_at_startup(path: Path, state: bool):
     # FIXME: Find a crossplatform way to add edgeware to startup aplication
     try:
-        startup_path = os.path.expanduser(
-            "~\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\"
-        )
+        bat_file = Path(
+            "~\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\edgeware.bat"
+        ).resolve()
         logging.info(f"trying to toggle startup bat to {state}")
-        if state:
-            make_shortcut(path, "default", "start.pyw", "EdgeWare", startup_path)
-            logging.info("toggled startup run on.")
+        if state and not bat_file.exists():
+            edgeware_path = Path(__file__).parent.parent.parent.resolve()
+            virtual_env_script = edgeware_path / ".venv" / "Scripts" / "activate.bat"
+            bat_file.write_text(
+                f"""cd {edgeware_path} && {virtual_env_script} && python -m EdgeWare.start"""
+            )
+            logging.info("Toggled startup run on.")
         else:
-            os.remove(os.path.join(startup_path, "edgeware.lnk"))
-            logging.info("toggled startup run off.")
+            bat_file.unlink(missing_ok=True)
+            logging.info("Toggled startup run off.")
     except Exception as e:
         errText = (
             str(e)
@@ -186,5 +195,4 @@ def toggle_run_at_startup(path: Path, state: bool):
                 "[USERNAME_REDACTED]",
             )
         )
-        logging.warning(f"failed to toggle startup bat.\n\tReason: {errText}")
-        print("uwu")
+        logging.warning(f"Failed to toggle startup bat.\n\tReason: {errText}")

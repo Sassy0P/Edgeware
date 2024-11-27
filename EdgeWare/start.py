@@ -2,8 +2,6 @@ import ast
 import hashlib
 import json
 import logging
-from logging.config import listen
-from multiprocessing import Pool
 import os
 import random as rand
 import re
@@ -14,18 +12,21 @@ import sys
 import threading as thread
 import time
 import tkinter as tk
+from typing import List, Optional
 import urllib
+import urllib.request
 import webbrowser
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import messagebox, simpledialog
-from utils import utils
-import panic_listener
-import asyncio
+
+from EdgeWare.utils import utils
+from EdgeWare import config, panic_listener
+from EdgeWare.utils.configuration import Configuration
 
 PATH = Path(__file__).parent
-os.chdir(PATH)
+# os.chdir(PATH)
 
 config_file = PATH / "config.cfg"
 
@@ -56,10 +57,14 @@ missing_dependencies, error_message = (
 if missing_dependencies:
     raise ImportError(error_message)
 
-settings = {}
+settings: Configuration
+
+
 # Func for loading settings, really just grouping it
 def load_settings():
     global settings
+    settings = Configuration()
+    return
     logging.info("loading config settings...")
     settings = {}
 
@@ -85,9 +90,9 @@ def load_settings():
 
     # If the config version and the version listed in the configdefault version are different to try to update with
     # new setting tags if any are missing.
-    if settings.get("version") != default_setting_values[0]:
+    if settings.version != default_setting_values[0]:
         logging.warning(
-            f'local version {settings["version"]} does not match default version, config will be updated'
+            f"local version {settings.version} does not match default version, config will be updated"
         )
         regen_settings = {}
         for obj in default_setting_keys:
@@ -98,7 +103,7 @@ def load_settings():
                 regen_settings[obj] = default_setting_values[
                     default_setting_keys.index(obj)
                 ]
-        regen_settings["version"] = default_setting_values[0]
+        regen_settings.version = default_setting_values[0]
         regen_settings = json.loads(str(regen_settings).replace("'", '"'))
         settings = regen_settings
         config_file.write_text(str(regen_settings).replace("'", '"'))
@@ -108,34 +113,37 @@ def load_settings():
     default_wallpaper_dict = {"default": "wallpaper.png"}
     logging.info("converting wallpaper string to dict")
     try:
-        if settings.get("wallpaperDat") == "WPAPER_DEF":
+        if settings.wallpaperDat == "WPAPER_DEF":
             logging.info("default wallpaper data used")
-            settings["wallpaperDat"] = default_wallpaper_dict
+            settings.wallpaperDat = default_wallpaper_dict
         else:
-            if type(settings["wallpaperDat"]) == dict:
+            if type(settings.wallpaperDat) == dict:
                 logging.info("wallpaperdat already dict")
             else:
-                settings["wallpaperDat"] = ast.literal_eval(
-                    settings["wallpaperDat"].replace("\\", "/")
+                settings.wallpaperDat = ast.literal_eval(
+                    settings.wallpaperDat.replace("\\", "/")
                 )
                 logging.info("parsed wallpaper dict from string")
     except Exception as e:
-        settings["wallpaperDat"] = default_wallpaper_dict
+        settings.wallpaperDat = default_wallpaper_dict
         logging.warning(
             f"failed to parse wallpaper from string, using default value instead\n\tReason: {e}"
         )
 
 
 # Load settings, if first run open options, then reload options from file
-load_settings()
-if int(settings.get("is_configed")) != 1:
-    logging.info("running config for first setup, is_configed flag is false.")
-    subprocess.run([sys.executable, "config.pyw"])
+settings = Configuration.load() or Configuration()
+if not settings.is_configured:
+    logging.info("running config for first setup, is_confiugred flag is false.")
+    settings = config.open_configuration()
+    settings.is_configured = True
+    settings.save()
     logging.info("reloading settings")
-    load_settings()
 
-# Check for pip_installed flag, if not installed run get-pip.pyw and then install pillow for popups
-if int(settings.get("pip_installed")) != 1:
+# Check for pip_installed flag, if not installed run get-pip.py and then install pillow for popups
+if (
+    not settings.pip_installed
+):  # FIXME: should check with a function call not the configuration file
     pip_found = True
     # Check if pip is installed
     try:
@@ -147,20 +155,20 @@ if int(settings.get("pip_installed")) != 1:
             pip_found = False
 
     if not pip_found:
-        logging.warning("pip is not installed, running get-pip.pyw")
-        subprocess.run([sys.executable, "get-pip.pyw"])
+        logging.warning("pip is not installed, running get-pip.py")
+        subprocess.run([sys.executable, "get-pip.py"])
         logging.warning(
             "pip should be installed, but issues will occur if installation failed."
         )
 
-    settings["pip_installed"] = 1
-    config_file.write_text(json.dumps(settings))
+    settings.pip_installed = 1
+    settings.save()
 
 
 def pip_install(packageName: str):
     try:
         logging.info(f"attempting to install {packageName}")
-        subprocess.run([sys.executable, "py" "-m", "install", packageName])
+        subprocess.run([sys.executable, "-m", "pip", "install", packageName])
     except:
         logging.warning(
             f"failed to install {packageName} using py -m pip, trying raw pip request"
@@ -195,9 +203,19 @@ except:
 
 try:
     import pystray
+
+    IS_PYSTRAY_IMPORTED = True
 except:
     logging.warning("failed to import pystray module")
     pip_install("pystray")
+    try:
+        import pystray
+
+        IS_PYSTRAY_IMPORTED = True
+    except:
+        logging.warning("Coudln't to import pystray module after installation try")
+        IS_PYSTRAY_IMPORTED = False
+
 
 try:
     import playsound
@@ -271,44 +289,44 @@ DEFAULT_DISCORD = "Playing with myself~"
 
 # naming each used variable from config for ease of use later
 # annoyance vars
-DELAY = int(settings["delay"])
-POPUP_CHANCE = int(settings["popupMod"])
-AUDIO_CHANCE = int(settings["audioMod"])
-PROMPT_CHANCE = int(settings["promptMod"])
-VIDEO_CHANCE = int(settings["vidMod"])
-WEB_CHANCE = int(settings["webMod"])
+DELAY = settings.delay
+POPUP_CHANCE = settings.popupMod
+AUDIO_CHANCE = settings.audioMod
+PROMPT_CHANCE = settings.promptMod
+VIDEO_CHANCE = settings.vidMod
+WEB_CHANCE = settings.webMod
 
-VIDEOS_ONLY = int(settings["onlyVid"]) == 1
+VIDEOS_ONLY = settings.onlyVid
 
-PANIC_DISABLED = int(settings["panicDisabled"]) == 1
+PANIC_DISABLED = settings.panicDisabled
 
 # mode vars
-SHOW_ON_DISCORD = int(settings["showDiscord"]) == 1
-LOADING_FLAIR = int(settings["showLoadingFlair"]) == 1
+SHOW_ON_DISCORD = settings.showDiscord
+LOADING_FLAIR = settings.showLoadingFlair
 
-DOWNLOAD_ENABLED = int(settings["downloadEnabled"]) == 1
-USE_WEB_RESOURCE = int(settings["useWebResource"]) == 1
+DOWNLOAD_ENABLED = settings.downloadEnabled
+USE_WEB_RESOURCE = settings.useWebResource
 
-MAX_FILL_THREADS = int(settings["maxFillThreads"])
+MAX_FILL_THREADS = settings.maxFillThreads
 
-HIBERNATE_MODE = int(settings["hibernateMode"]) == 1
-HIBERNATE_MIN = int(settings["hibernateMin"])
-HIBERNATE_MAX = int(settings["hibernateMax"])
-WAKEUP_ACTIVITY = int(settings["wakeupActivity"])
+HIBERNATE_MODE = settings.hibernateMode
+HIBERNATE_MIN = settings.hibernateMin
+HIBERNATE_MAX = settings.hibernateMax
+WAKEUP_ACTIVITY = settings.wakeupActivity
 
-FILL_MODE = int(settings["fill"]) == 1
-FILL_DELAY = int(settings["fill_delay"])
-REPLACE_MODE = int(settings["replace"]) == 1
-REPLACE_THRESHOLD = int(settings["replaceThresh"])
+FILL_MODE = settings.fill
+FILL_DELAY = settings.fill_delay
+REPLACE_MODE = settings.replace
+REPLACE_THRESHOLD = settings.replaceThresh
 
-ROTATE_WALLPAPER = int(settings["rotateWallpaper"]) == 1
+ROTATE_WALLPAPER = settings.rotateWallpaper
 
-MITOSIS_MODE = int(settings["mitosisMode"]) == 1
-LOWKEY_MODE = int(settings["lkToggle"]) == 1
+MITOSIS_MODE = settings.mitosisMode
+LOWKEY_MODE = settings.lkToggle
 
-TIMER_MODE = int(settings["timerMode"]) == 1
+TIMER_MODE = settings.timerMode
 
-DRIVE_PATH = settings["drivePath"]
+DRIVE_PATH = settings.drivePath
 
 
 # for checking directories/files
@@ -387,7 +405,7 @@ if (Resource.ROOT / "web.json").exists():
     WEB_DICT = json.loads((Resource.ROOT / "web.json").read_text())
 
 try:
-    AVOID_LIST = settings["avoidList"].split(">")
+    AVOID_LIST = settings.avoidList
 except Exception as e:
     logging.warning(f"failed to set avoid list\n\tReason: {e}")
 
@@ -436,7 +454,7 @@ HAS_WEB = WEB_JSON_FOUND and len(WEB_DICT["urls"]) > 0
 # set discord status if enabled
 if SHOW_ON_DISCORD:
     try:
-        utils.run_script(utils.SCRIPTS.DISCORD_HANDLER)
+        utils.run_discord_handler_script()
     except Exception as e:
         logging.warning(
             f"failed to start discord status background task\n\tReason: {e}"
@@ -445,23 +463,24 @@ if SHOW_ON_DISCORD:
 
 # making missing desktop shortcuts
 if not utils.does_desktop_shortcut_exists("Edgeware"):
-    utils.make_shortcut(PATH, "default", "start.pyw", "Edgeware")
+    utils.make_shortcut(PATH, "default", "start.py", "Edgeware")
 if not utils.does_desktop_shortcut_exists("Config"):
-    utils.make_shortcut(PATH, "config", "config.pyw", "Config")
+    utils.make_shortcut(PATH, "config", "config.py", "Config")
 if not utils.does_desktop_shortcut_exists("Panic"):
-    utils.make_shortcut(PATH, "panic", "panic.pyw", "Panic")
+    utils.make_shortcut(PATH, "panic", "panic.py", "Panic")
 
 if LOADING_FLAIR:
     logging.info("started loading flair")
-    subprocess.run([sys.executable, "startup_flair.pyw"])
+    utils.run_script("startup_flair.py")
 
 # set wallpaper
 if not HIBERNATE_MODE:
     logging.info("set user wallpaper to default wallpaper.png")
     utils.set_wallpaper(Resource.ROOT / "wallpaper.png")
 
+
 # selects url to be opened in new tab by web browser
-def url_select(arg: int) -> str | None:
+def url_select(arg: int) -> Optional[str]:
     logging.info(f"selected url {arg}")
     return (
         WEB_DICT["urls"][arg]
@@ -471,123 +490,126 @@ def url_select(arg: int) -> str | None:
     )
 
 
-# class to handle window for tray icon
-class TrayHandler:
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("Edgeware")
-        self.timer_mode = settings["timerMode"] == 1
+if IS_PYSTRAY_IMPORTED:
+    # class to handle window for tray icon
+    class TrayHandler:
+        def __init__(self):
+            self.root = tk.Tk()
+            self.root.title("Edgeware")
+            self.timer_mode = settings.timerMode == 1
 
-        self.option_list = [
-            pystray.MenuItem("Edgeware Menu", print),
-            pystray.MenuItem("Panic", self.try_panic),
-        ]
-        self.tray_icon = pystray.Icon(
-            "Edgeware",
-            Image.open(os.path.join(PATH, "default_assets", "default_icon.ico")),
-            "Edgeware",
-            self.option_list,
-        )
+            self.option_list = [
+                pystray.MenuItem("Edgeware Menu", print),  # type: ignore # HACK
+                pystray.MenuItem("Panic", self.try_panic),  # type: ignore # HACK
+            ]
+            self.tray_icon = pystray.Icon(  # type: ignore # HACK
+                "Edgeware",
+                Image.open(os.path.join(PATH, "default_assets", "default_icon.ico")),
+                "Edgeware",
+                self.option_list,
+            )
 
-        self.root.withdraw()
+            self.root.withdraw()
 
-        self.password_setup()
+            self.password_setup()
 
-    def password_setup(self):
-        if self.timer_mode:
-            hashObjPath = os.path.join(PATH, "pass.hash")
-            try:
-                utils.expose_file(hashObjPath)
-                with open(hashObjPath, "r") as file:
-                    self.hashedPass = file.readline()
-                utils.hide_file(hashObjPath)
-            except:
-                # no hash found
-                self.hashedPass = None
-
-    def try_panic(self):
-        logging.info("attempting tray panic")
-        if not PANIC_DISABLED:
+        def password_setup(self):
             if self.timer_mode:
                 hashObjPath = os.path.join(PATH, "pass.hash")
-                timeObjPath = os.path.join(PATH, "hid_time.dat")
-                pass_ = simpledialog.askstring("Panic", "Enter Panic Password")
-                t_hash = (
-                    None
-                    if pass_ is None or pass_ == ""
-                    else hashlib.sha256(
-                        pass_.encode(encoding="ascii", errors="ignore")
-                    ).hexdigest()
-                )
-                if t_hash == self.hashedPass:
-                    # revealing hidden files
-                    try:
-                        utils.expose_file(hashObjPath)
-                        utils.expose_file(timeObjPath)
-                        os.remove(hashObjPath)
-                        os.remove(timeObjPath)
-                        utils.run_panic_script()
-                    except:
-                        logging.critical(
-                            "panic initiated due to failed pass/timer check"
-                        )
-                        self.tray_icon.stop()
-                        utils.run_panic_script()
-            else:
-                logging.warning("panic initiated from tray command")
-                self.tray_icon.stop()
-                utils.run_panic_script()
+                try:
+                    utils.expose_file(hashObjPath)
+                    with open(hashObjPath, "r") as file:
+                        self.hashedPass = file.readline()
+                    utils.hide_file(hashObjPath)
+                except:
+                    # no hash found
+                    self.hashedPass = None
 
-    def move_to_tray(self):
-        self.tray_icon.run(tray_setup)
-        logging.info("tray handler thread running")
+        def try_panic(self):
+            logging.info("attempting tray panic")
+            if not PANIC_DISABLED:
+                if self.timer_mode:
+                    hashObjPath = os.path.join(PATH, "pass.hash")
+                    timeObjPath = os.path.join(PATH, "hid_time.dat")
+                    pass_ = simpledialog.askstring("Panic", "Enter Panic Password")
+                    t_hash = (
+                        None
+                        if pass_ is None or pass_ == ""
+                        else hashlib.sha256(
+                            pass_.encode(encoding="ascii", errors="ignore")
+                        ).hexdigest()
+                    )
+                    if t_hash == self.hashedPass:
+                        # revealing hidden files
+                        try:
+                            utils.expose_file(hashObjPath)
+                            utils.expose_file(timeObjPath)
+                            os.remove(hashObjPath)
+                            os.remove(timeObjPath)
+                            utils.run_panic_script()
+                        except:
+                            logging.critical(
+                                "panic initiated due to failed pass/timer check"
+                            )
+                            self.tray_icon.stop()
+                            utils.run_panic_script()
+                else:
+                    logging.warning("panic initiated from tray command")
+                    self.tray_icon.stop()
+                    utils.run_panic_script()
 
+        def move_to_tray(self):
+            self.tray_icon.run(tray_setup)
+            logging.info("tray handler thread running")
 
-def tray_setup(icon):
-    icon.visible = True
+    def tray_setup(icon):
+        icon.visible = True
 
 
 shutdown_event = thread.Event()
 
+
 # main function, probably can do more with this but oh well i'm an idiot so
 def main():
     logging.info("entered main function")
+
     # set up tray icon
-    tray = TrayHandler()
+    if IS_PYSTRAY_IMPORTED:
+        tray = TrayHandler()
 
     # if tray icon breaks again this is why
     # idk why it works 50% of the time when it works and sometimes just stops working
-    thread.Thread(target=tray.move_to_tray, daemon=True).start()
+    # thread.Thread(target=tray.move_to_tray, daemon=True).start()
 
     # timer handling, start if there's a time left file
     if os.path.exists(os.path.join(PATH, "hid_time.dat")):
         thread.Thread(target=do_timer).start()
 
     # do downloading for booru stuff
-    if settings.get("downloadEnabled") == 1:
+    if settings.downloadEnabled == 1:
         booru_downloader: BooruDownloader = BooruDownloader(
-            settings.get("booruName"), settings.get("tagList").split(">")
+            settings.booruName, settings.tagList
         )
 
         logging.info("start booru_method thread")
-        if settings.get("downloadMode") == "First Page":
+        if settings.downloadMode == "First Page":
             thread.Thread(
                 target=lambda: booru_downloader.download(
-                    min_score=int(settings.get("booruMinScore"))
+                    min_score=settings.booruMinScore
                 ),
                 daemon=True,
             ).start()
-        elif settings.get("downloadMode") == "Random Page":
+        elif settings.downloadMode == "Random Page":
             thread.Thread(
                 target=lambda: booru_downloader.download_random(
-                    min_score=int(settings.get("booruMinScore"))
+                    min_score=settings.booruMinScore
                 ),
                 daemon=True,
             ).start()
         else:
             thread.Thread(
                 target=lambda: booru_downloader.download_all(
-                    min_score=int(settings.get("booruMinScore"))
+                    min_score=settings.booruMinScore
                 ),
                 daemon=True,
             ).start()
@@ -620,9 +642,7 @@ def main():
                 annoy()
         shutdown_event.set()
 
-    panic_listen = thread.Thread(
-        target=panic_listener.listen, args=(shutdown_event,)
-    )
+    panic_listen = thread.Thread(target=panic_listener.listen, args=(shutdown_event,))
 
     panic_listen.start()
     hibernate_or_annoy(shutdown_event)
@@ -633,7 +653,7 @@ def main():
     if utils.is_linux():
         os.killpg(os.getpgid(os.getpid()), signal.SIGTERM)
     elif utils.is_windows():
-        os.kill(os.getpid(),  signal.SIGTERM)
+        os.kill(os.getpid(), signal.SIGTERM)
 
 
 # just checking %chance of doing annoyance options
@@ -643,7 +663,7 @@ def do_roll(mod: int) -> bool:
 
 # booru handling class
 class BooruDownloader:
-    def __init__(self, booru: str, tags: list[str] = None):
+    def __init__(self, booru: str, tags: Optional[List[str]] = None):
 
         self.extension_list: list[str] = ["jpg", "jpeg", "png", "gif"]
 
@@ -674,8 +694,12 @@ class BooruDownloader:
         self.max_page = int(self.get_page_count())
 
     def download(
-        self, page_start: int = 0, page_end: int = 1, min_score: int = None
+        self, page_start: int = 0, page_end: int = 1, min_score: Optional[int] = None
     ) -> None:
+        if not self.booru_scheme:
+            logging.warning("Can't download images: No booru scheme ")
+            return
+
         self._page_start = max(page_start, 0)
         self._page_start = min(self._page_start, self.page_count)
         self._page_end = (
@@ -732,15 +756,16 @@ class BooruDownloader:
                     except:
                         continue
 
-    def download_random(self, min_score: int = None) -> None:
+    def download_random(self, min_score: Optional[int] = None) -> None:
         self._selected_page = rand.randint(0, self.max_page)
         self.download(self._selected_page, min_score=min_score)
 
-    def download_all(self, min_score: int = None) -> None:
+    def download_all(self, min_score: Optional[int] = None) -> None:
         for page in range(0, self.max_page):
             self.download(page, min_score=min_score)
 
-    def direct_download(self, url: str) -> None:
+    @staticmethod
+    def direct_download(url: str) -> None:
         class LocalOpener(urllib.request.FancyURLopener):
             version = "Mozilla/5.0"
 
@@ -751,6 +776,10 @@ class BooruDownloader:
             shutil.copyfileobj(file, out)
 
     def get_page_count(self) -> int:
+        if not self.booru_scheme:
+            logging.warning("Can't get pages: No booru scheme ")
+            return 0
+
         self._href_core = self.booru_scheme.booru_search_url.format(
             booru_name=self.booru
         ).split("?")[0]
@@ -771,7 +800,7 @@ class BooruDownloader:
                             (self._final_link.index("&pid=") + len("&pid=")) :
                         ]
                     )
-                    / self.post_per_page
+                    // self.post_per_page
                     + 1
                 )
         return 0
@@ -816,12 +845,12 @@ def download_web_resources():
 #             as threads become available they will be restarted.
 #       replace: will only happen one single time in the run of the application, but checks ALL folders
 def annoy():
-    global MITOSIS_LIVE
+    global MITOSIS_LIVEe
 
     roll_for_initiative()
     if not MITOSIS_LIVE and (MITOSIS_MODE or LOWKEY_MODE) and HAS_IMAGES:
         utils.run_popup_script()
-        MITOSIS_LIVE = True
+        # MITOSIS_LIVE = True
     with MUTEX_LIVE_FILL_THREADS:
         if FILL_MODE and LIVE_FILL_THREADS < MAX_FILL_THREADS:
             thread.Thread(target=fill_drive).start()
@@ -845,59 +874,57 @@ def roll_for_initiative():
                 logging.critical(f"failed to open website {url}\n\tReason: {e}")
     if do_roll(VIDEO_CHANCE) and VIDEOS:
         try:
-            thread.Thread(
-                target=lambda: utils.run_script("popup.pyw", "-video")
-            ).start()
+            thread.Thread(target=lambda: utils.run_script("popup.py", "-video")).start()
         except Exception as e:
             messagebox.showerror(
                 "Popup Error", "Failed to start popup.\n[" + str(e) + "]"
             )
-            logging.critical(f"failed to start video popup.pyw\n\tReason: {e}")
+            logging.critical(f"failed to start video popup.py\n\tReason: {e}")
 
     if (not (MITOSIS_MODE or LOWKEY_MODE)) and do_roll(POPUP_CHANCE) and HAS_IMAGES:
         try:
-            utils.run_popup_script()
+            thread.Thread(target=utils.run_popup_script).start()
+            # utils.run_popup_script()
         except Exception as e:
             messagebox.showerror(
                 "Popup Error", "Failed to start popup.\n[" + str(e) + "]"
             )
-            logging.critical(f"failed to start popup.pyw\n\tReason: {e}")
+            logging.critical(f"failed to start popup.py\n\tReason: {e}")
     if do_roll(AUDIO_CHANCE):
-        with MUTEX_PLAYING_AUDIO:
-            if not PLAYING_AUDIO and AUDIO:
-                try:
-                    thread.Thread(target=play_audio).start()
-                except Exception as e:
-                    messagebox.showerror(
-                        "Audio Error", "Failed to play audio.\n[" + str(e) + "]"
-                    )
-                    logging.critical(f"failed to play audio\n\tReason: {e}")
+        if not MUTEX_PLAYING_AUDIO.locked():
+            try:
+                thread.Thread(target=play_audio).start()
+            except Exception as e:
+                messagebox.showerror(
+                    "Audio Error", "Failed to play audio.\n[" + str(e) + "]"
+                )
+                logging.critical(f"failed to play audio\n\tReason: {e}")
     if do_roll(PROMPT_CHANCE) and HAS_PROMPTS:
         try:
-            subprocess.run([sys.executable, "prompt.pyw"])
+            utils.run_script("prompt.py")
         except Exception as e:
             messagebox.showerror(
                 "Prompt Error", "Could not start prompt.\n[" + str(e) + "]"
             )
-            logging.critical(f"failed to start prompt.pyw\n\tReason: {e}")
+            logging.critical(f"failed to start prompt.py\n\tReason: {e}")
 
 
 def rotate_wallpapers():
     prv = "default"
-    base = int(settings["wallpaperTimer"])
-    vari = int(settings["wallpaperVariance"])
+    base = settings.wallpaperTimer
+    vari = settings.wallpaperVariance
 
     time.sleep(base + rand.randint(-vari, vari))
-    while len(settings["wallpaperDat"].keys()) > 1:
+    while len(settings.wallpaperDat.keys()) > 1:
         if shutdown_event.is_set():
             return
-        available_wallpapers: list[str] = list(settings["wallpaperDat"].keys())
+        available_wallpapers: list[str] = list(settings.wallpaperDat.keys())
         available_wallpapers.remove(prv)
 
         if available_wallpapers:
             selectedWallpaper = rand.choice(available_wallpapers)
             utils.set_wallpaper(
-                Resource.ROOT / settings["wallpaperDat"][selectedWallpaper]
+                Resource.ROOT / settings.wallpaperDat[selectedWallpaper]
             )
             prv = selectedWallpaper
         time.sleep(base + rand.randint(-vari, vari))
@@ -935,7 +962,7 @@ def do_timer():
 def play_audio():
     global PLAYING_AUDIO
 
-    if not AUDIO:
+    if not AUDIO or MUTEX_PLAYING_AUDIO.locked():
         return
 
     logging.info("starting audio playback")
@@ -943,7 +970,7 @@ def play_audio():
     with MUTEX_PLAYING_AUDIO:
         PLAYING_AUDIO = True
         # winsound.PlaySound(AUDIO[rand.randrange(len(AUDIO))], winsound.SND_FILENAME)
-        playsound.playsound(rand.choice(AUDIO))
+        utils.play_soundfile(rand.choice(AUDIO), block=True)
         PLAYING_AUDIO = False
         logging.info("finished audio playback")
 

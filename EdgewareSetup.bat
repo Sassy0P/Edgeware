@@ -34,7 +34,7 @@ goto run
 :run
 echo Edgeware is ready to start.
 pause
-start "Edgeware" "%CD%/EdgeWare/start.pyw"
+start "Edgeware" "%CD%/EdgeWare/__main__.py"
 exit
 :quit
 echo Python still could not be found.

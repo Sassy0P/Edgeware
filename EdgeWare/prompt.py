@@ -2,10 +2,8 @@ import json
 import os
 import pathlib
 import random as rand
-import tkinter as tk
-from tkinter import *
-from tkinter import messagebox
-import utils
+from tkinter import messagebox, Tk, Label, Frame, RAISED, Text, Button
+from utils import utils
 
 hasData = False
 textData = {}
@@ -44,7 +42,7 @@ def unborderedWindow():
     if not hasData:
         exit()
     root = Tk()
-    label = tk.Label(root, text="\n" + command_text + "\n")
+    label = Label(root, text="\n" + command_text + "\n")
     label.pack()
 
     txt = buildText()
@@ -63,8 +61,8 @@ def unborderedWindow():
     if utils.is_windows():
         root.overrideredirect(True)
 
-    root.frame = Frame(root, borderwidth=2, relief=RAISED)
-    root.frame.pack_propagate(True)
+    frame = Frame(root, borderwidth=2, relief=RAISED)
+    frame.pack_propagate(True)
     root.wm_attributes("-topmost", 1)
 
     inputBox = Text(root)

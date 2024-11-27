@@ -4,8 +4,9 @@ import sys
 import threading as thread
 import time
 import webbrowser
-import winsound
 from tkinter import Button, Frame, Label, Tk
+
+from EdgeWare.utils import utils
 
 SYS_ARGS = sys.argv
 
@@ -14,7 +15,7 @@ PATH = os.curdir
 
 class ScriptHandler:
     def __init__(self, script_name):
-        self.bookmarks = dict[str, int]({})
+        self.bookmarks: "dict[str, int]" = {}
         self.scriptLiteral = []
         self.argList = []
         self.ans = None
@@ -91,7 +92,7 @@ class ScriptHandler:
     def jumpS(self, target1, target2) -> None:
         self.jump(target1) if self.ans == 0 else self.jump(target2)
 
-    # displays given image name with popup.pyw
+    # displays given image name with popup.py
     # using name %RAND% will result in random image being selected
     # tags:
     #   async   - start popup asynchronously to other commands
@@ -108,10 +109,10 @@ class ScriptHandler:
         )
 
         if not self.checkTag("async"):
-            os.system(r"python popup.pyw " + name + argStr)
+            os.system(r"python popup.py " + name + argStr)
         else:
             thread.Thread(
-                target=lambda: os.system(r"python popup.pyw " + name + argStr),
+                target=lambda: os.system(r"python popup.py " + name + argStr),
                 daemon=True,
             ).start()
 
@@ -132,7 +133,7 @@ class ScriptHandler:
 
     # displays text window with 2 option buttons, response is stored in self.ans and can be immediately applied
     # by using the switch expression immediately after
-    def showOpt(self, prompt, opt1, opt2) -> int:
+    def showOpt(self, prompt, opt1, opt2):
         self.rootOpt = Tk()
         self.rootOpt.title("Choice")
         self.rootOpt.geometry("200x150")
@@ -160,15 +161,13 @@ class ScriptHandler:
     def playAud(self, name) -> None:
         if self.checkTag("async"):
             thread.Thread(
-                target=lambda: winsound.PlaySound(
-                    os.path.join("resource\\aud\\", name), winsound.SND_FILENAME
+                target=lambda: utils.play_soundfile(
+                    os.path.join("resource\\aud\\", name)
                 ),
                 daemon=True,
             ).start()
         else:
-            winsound.PlaySound(
-                os.path.join("resource\\aud\\", name), winsound.SND_FILENAME
-            )
+            utils.play_soundfile(os.path.join("resource\\aud\\", name))
 
     # parses arglist based on quotation grouping (playaud "file name.wav" -> self.playAud("file name.wav"))
     def parseMultipartText(self):

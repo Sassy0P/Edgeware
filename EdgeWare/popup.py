@@ -1,8 +1,10 @@
+from ast import Dict
 import ctypes
 from ctypes import util
 import hashlib
 import json
 import logging
+from math import exp
 import os
 import pathlib
 import random as rand
@@ -11,11 +13,18 @@ import sys
 import threading as thread
 import time
 import tkinter as tk
+from tkinter.tix import Tree
+from typing import Optional, cast
 import webbrowser
 from itertools import count, cycle
-from tkinter import RAISED, Button, Frame, Label, Tk, messagebox, simpledialog
+from tkinter import Button, Frame, Label, Tk, simpledialog
 from PIL import Image, ImageFilter, ImageTk
-from utils import utils
+import tkintervideo.player
+import tkvideo
+from EdgeWare.utils import utils
+import numpy as np
+
+from EdgeWare.utils.configuration import Configuration
 
 SYS_ARGS = sys.argv.copy()
 SYS_ARGS.pop(0)
@@ -35,6 +44,7 @@ class RECT(ctypes.Structure):  # rect class for containing monitor info
 
 # End Imported Code
 
+
 # used to check passed tags for script mode
 def checkTag(tag) -> bool:
     return [c.startswith(tag) for c in SYS_ARGS].count(True) >= 1
@@ -50,8 +60,6 @@ def check_setting(name: str, default: bool = False) -> bool:
 
 PATH = pathlib.Path(__file__).parent
 os.chdir(PATH)
-
-config_file = PATH / "config.cfg"
 
 ALLOW_SCREAM = True
 SHOW_CAPTIONS = False
@@ -77,29 +85,28 @@ DENIAL_MODE = False
 DENIAL_CHANCE = 0
 SUBLIMINAL_MODE = False
 
-config_file = PATH / "config.cfg"
-settings = json.loads(config_file.read_text())
+settings = cast(Configuration, Configuration.load(panic_on_error=True))
 
 SHOW_CAPTIONS = check_setting("showCaptions")
 PANIC_DISABLED = check_setting("panicDisabled")
 MITOSIS_MODE = check_setting("mitosisMode")
 WEB_OPEN = check_setting("webPopup")
-WEB_PROB = int(settings["webMod"])
-PANIC_KEY = settings["panicButton"]
+WEB_PROB = settings.webMod
+PANIC_KEY = settings.panicButton
 HAS_LIFESPAN = check_setting("timeoutPopups")
-LIFESPAN = int(settings["popupTimeout"])
-MITOSIS_STRENGTH = int(settings["mitosisStrength"])
+LIFESPAN = settings.popupTimeout
+MITOSIS_STRENGTH = settings.mitosisStrength
 PANIC_REQUIRES_VALIDATION = check_setting("timerMode")
 LOWKEY_MODE = check_setting("lkToggle")
-LOWKEY_CORNER = int(settings["lkCorner"])
-DELAY = int(settings["delay"])
-OPACITY = int(settings["lkScaling"])
+LOWKEY_CORNER = settings.lkCorner
+DELAY = settings.delay
+OPACITY = settings.lkScaling
 
-VIDEO_VOLUME = float(settings["videoVolume"]) / 100
+VIDEO_VOLUME = float(settings.videoVolume) / 100
 VIDEO_VOLUME = min(max(0, VIDEO_VOLUME), 1)
 
 DENIAL_MODE = check_setting("denialMode")
-DENIAL_CHANCE = int(settings["denialChance"])
+DENIAL_CHANCE = settings.denialChance
 SUBLIMINAL_MODE = check_setting("popupSubliminals")
 
 # functions for script mode, unused for now
@@ -131,8 +138,9 @@ if PANIC_REQUIRES_VALIDATION:
         # no hash found
         HASHED_PATH = None
 
-if WEB_OPEN:
-    web_dict = ""
+
+if True:
+    web_dict = {}
     web_resource = PATH / "resource" / "web.json"
     if web_resource.exists():
         web_dict = json.loads(web_resource.read_text())
@@ -157,7 +165,7 @@ class GifLabel(tk.Label):
         resized_width: int,
         resized_height: int,
         delay: int = 75,
-        back_image: Image.Image = None,
+        back_image: Optional[Image.Image] = None,
     ):
         self.image = Image.open(path)
         self.configure(background="black")
@@ -166,7 +174,7 @@ class GifLabel(tk.Label):
         try:
             for i in count(1):
                 hold_image = self.image.resize(
-                    (resized_width, resized_height), Image.BOX
+                    (resized_width, resized_height), Image.Resampling.LANCZOS
                 )
                 if back_image is not None:
                     hold_image, back_image = hold_image.convert(
@@ -182,65 +190,8 @@ class GifLabel(tk.Label):
 
     def next_frame(self):
         if self.frames_:
-            self.config(image=next(self.frames_))
+            self.config(image=next(self.frames_))  # type: ignore # HACK: Image type
             self.after(self.delay, self.next_frame)
-
-
-# video label class
-class VideoLabel(tk.Label):
-    def load(self, path: str, resized_width: int, resized_height: int):
-        import imageio
-        from moviepy.editor import AudioFileClip
-        from videoprops import get_video_properties
-
-        self.path = path
-        self.configure(background="black")
-        self.wid = resized_width
-        self.hgt = resized_height
-        self.video_properties = get_video_properties(path)
-        self.audio = AudioFileClip(self.path)
-        self.fps = float(self.video_properties["avg_frame_rate"].split("/")[0]) / float(
-            self.video_properties["avg_frame_rate"].split("/")[1]
-        )
-        try:
-            self.audio_track = self.audio.to_soundarray()
-            print(self.audio_track)
-            self.audio_track = [
-                [VIDEO_VOLUME * v[0], VIDEO_VOLUME * v[1]] for v in self.audio_track
-            ]
-            self.duration = float(self.video_properties["duration"])
-        except:
-            self.audio_track = None
-            self.duration = None
-        self.video_frames = imageio.get_reader(path)
-        self.delay = 1 / self.fps
-
-    def play(self):
-        from types import NoneType
-
-        if not isinstance(self.audio_track, NoneType):
-            try:
-                import sounddevice
-
-                sounddevice.play(
-                    self.audio_track,
-                    samplerate=len(self.audio_track) / self.duration,
-                    loop=True,
-                )
-            except Exception as e:
-                print(f"failed to play sound, reason:\n\t{e}")
-        while True:
-            for frame in self.video_frames.iter_data():
-                self.time_offset_start = time.perf_counter()
-                self.video_frame_image = ImageTk.PhotoImage(
-                    Image.fromarray(frame).resize((self.wid, self.hgt))
-                )
-                self.config(image=self.video_frame_image)
-                self.image = self.video_frame_image
-                self.time_offset_end = time.perf_counter()
-                time.sleep(
-                    max(0, self.delay - (self.time_offset_end - self.time_offset_start))
-                )
 
 
 def run():
@@ -269,7 +220,7 @@ def run():
         from videoprops import get_video_properties
 
         video_path = PATH / "resource" / "vid" / item
-        video_properties = get_video_properties(video_path)
+        video_properties = get_video_properties(str(video_path))
         image = Image.new(
             "RGB", (video_properties["width"], video_properties["height"])
         )
@@ -284,8 +235,8 @@ def run():
     root = Tk()
     root.bind("<KeyPress>", lambda key: panic(key))
     root.configure(bg="black")
-    root.overrideredirect(1)
-    root.frame = Frame(root)
+    root.overrideredirect(True)
+    root.frame = Frame(root)  # type: ignore # FIXME: Revamp into a class please
     root.wm_attributes("-topmost", 1)
 
     # many thanks to @MercyNudes for fixing my old braindead scaling method (https://twitter.com/MercyNudes)
@@ -297,7 +248,10 @@ def run():
             else rand.randint(20, 50) / 100
         )
         resize_factor = size_target / size_source
-        return image.resize((int(image.width * resize_factor), int(image.height * resize_factor)), Image.LANCZOS)
+        return image.resize(
+            (int(image.width * resize_factor), int(image.height * resize_factor)),
+            Image.Resampling.LANCZOS,
+        )
 
     resized_image = resize(image)
 
@@ -320,15 +274,17 @@ def run():
 
     # different handling for videos vs gifs vs normal images
     if video_mode:
+        from tkintervideo import player
+
         # video mode
-        label = VideoLabel(root)
-        label.load(
-            path=str(video_path.absolute()),
-            resized_width=resized_image.width,
-            resized_height=resized_image.height,
+        label = player.Player(
+            root, width=resized_image.width, height=resized_image.height
         )
-        label.pack()
-        thread.Thread(target=lambda: label.play(), daemon=True).start()
+        root.videoplayer = label  # type: ignore # FIXME: Revamp into a class please
+        label.load(str(video_path.absolute()))  # type: ignore # FIXME: Revamp into a class please
+        label.pack(expand=True, fill="both")
+        label.play()
+        # thread.Thread(target=lambda: label.play(), daemon=True).start()
     elif gif_bool:
         # gif mode
         label = GifLabel(root)
@@ -341,7 +297,7 @@ def run():
     else:
         # standard image mode
         if not SUBLIMINAL_MODE:
-            label = Label(root, image=photoimage_image, bg="black")
+            label = Label(root, image=photoimage_image, bg="black")  # type: ignore #HACK: Image typing
             label.pack()
         else:
             label = GifLabel(root)
@@ -358,7 +314,7 @@ def run():
                     subliminal_path = subliminals / rand.choice(subliminal_options)
 
             label.load(
-                subliminal_path,
+                str(subliminal_path),
                 photoimage_image.width(),
                 photoimage_image.height(),
                 back_image=resized_image,
@@ -404,12 +360,12 @@ def run():
     )
 
     if gif_bool:
-        label.next_frame()
+        label.next_frame()  # type: ignore # FIXME: Revamp into a class please
 
     if HAS_LIFESPAN or LOWKEY_MODE:
         thread.Thread(
             target=lambda: live_life(
-                root, LIFESPAN if not LOWKEY_MODE else DELAY / 1000
+                root, LIFESPAN if not LOWKEY_MODE else DELAY // 1000
             ),
             daemon=True,
         ).start()
@@ -424,7 +380,7 @@ def run():
             )
             captionLabel.place(x=5, y=5)
 
-    submit_button = Button(root, text=SUBMISSION_TEXT, command=die)
+    submit_button = Button(root, text=SUBMISSION_TEXT, command=lambda: die(root))
     submit_button.place(
         x=resized_image.width - 5 - submit_button.winfo_reqwidth(),
         y=resized_image.height - 5 - submit_button.winfo_reqheight(),
@@ -438,7 +394,7 @@ def check_deny() -> bool:
     return DENIAL_MODE and rand.randint(1, 100) <= DENIAL_CHANCE
 
 
-def live_life(parent: tk, length: int):
+def live_life(parent: Tk, length: int):
     time.sleep(length)
     for i in range(100 - OPACITY, 100):
         parent.attributes("-alpha", 1 - i / 100)
@@ -448,11 +404,11 @@ def live_life(parent: tk, length: int):
     os.kill(os.getpid(), 9)
 
 
-def do_roll(mod: int):
+def do_roll(mod: int) -> bool:
     return mod > rand.randint(0, 100)
 
 
-def select_url(arg: str):
+def select_url(arg: int):
     return (
         web_dict["urls"][arg]
         + web_dict["args"][arg].split(",")[
@@ -461,27 +417,26 @@ def select_url(arg: str):
     )
 
 
-def die():
-    if WEB_OPEN and web_dict and do_roll((100 - WEB_PROB) / 2) and not LOWKEY_MODE:
-        urlPath = select_url(rand.randrange(len(web_dict["urls"])))
+def die(root: Tk):
+    if hasattr(root, "videoplayer"):
+        root.videoplayer.stop()  # type: ignore # FIXME: Revamp into a class please
+    if WEB_OPEN and web_dict and do_roll((100 - WEB_PROB) // 2) and not LOWKEY_MODE:
+        urlPath = select_url(rand.randrange(0, len(web_dict["urls"])))
         webbrowser.open_new(urlPath)
     if MITOSIS_MODE or LOWKEY_MODE:
         for _ in range(0, MITOSIS_STRENGTH) if not LOWKEY_MODE else [1]:
             utils.run_popup_script()
-    os.kill(os.getpid(), 9)
+    # os.kill(os.getpid(), 9)
+    root.destroy()
 
 
-def select_caption(filename: str) -> str:
+def select_caption(filename: str) -> Optional[str]:
     for obj in CAPTIONS["prefix"]:
         if filename.startswith(obj):
             ls = CAPTIONS[obj]
             ls.extend(CAPTIONS["default"])
             return ls[rand.randrange(0, len(CAPTIONS[obj]))]
-    return (
-        CAPTIONS["default"][rand.randrange(0, len(CAPTIONS["default"]))]
-        if (len(CAPTIONS["default"]) > 0)
-        else None
-    )
+    return rand.choice(CAPTIONS["default"]) if (len(CAPTIONS["default"]) > 0) else None
 
 
 def panic(key):
