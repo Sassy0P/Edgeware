@@ -23,7 +23,7 @@ def doAnimation():
     img = ImageTk.PhotoImage(
         img_.resize(
             (int(img_.width * scalar), int(img_.height * scalar)),
-            resample=Image.LANCZOS,
+            resample=Image.Resampling.LANCZOS
         )
     )
     root.geometry(

@@ -11,6 +11,7 @@ def is_linux() -> bool:
 
 def is_mac() -> bool:
     return "darwin" in sys.platform
+  
 
 if is_linux():
     from .linux import *
@@ -20,6 +21,7 @@ elif is_windows():
     from .windows import *
 else:
     raise RuntimeError("Unsupported operating system: {}".format(sys.platform))
+
 
 
 class SCRIPTS(str, Enum):

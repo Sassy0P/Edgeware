@@ -7,6 +7,7 @@ from tkinter import *
 from tkinter import messagebox
 from utils import utils
 
+
 hasData = False
 textData = {}
 maxMistakes = 3

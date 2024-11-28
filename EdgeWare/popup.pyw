@@ -297,7 +297,8 @@ def run():
         resize_factor = size_target / size_source
         return image.resize(
             (int(image.width * resize_factor), int(image.height * resize_factor)),
-            Image.LANCZOS,
+
+            Image.Resampling.LANCZOS,
         )
 
     resized_image = resize(image)
@@ -317,6 +318,7 @@ def run():
 
     photoimage_image = ImageTk.PhotoImage(resized_image)
     image.close()
+
     # different handling for videos vs gifs vs normal images
     if video_mode:
         # video mode
@@ -426,6 +428,7 @@ def run():
             captionLabel.place(x=5, y=5)
 
     submit_button = Button(root, text=SUBMISSION_TEXT, command=die, bg="white", fg="black")
+
     submit_button.place(
         x=resized_image.width - 5 - submit_button.winfo_reqwidth(),
         y=resized_image.height - 5 - submit_button.winfo_reqheight(),
