@@ -64,7 +64,7 @@ logging.info("Started start logging successfully.")
 def pip_install(packageName: str):
     try:
         logging.info(f"attempting to install {packageName}")
-        subprocess.run([sys.executable, "py" "-m", "install", packageName])
+        subprocess.run([sys.executable, "-m", "pip", "install", packageName])
     except:
         logging.warning(
             f"failed to install {packageName} using py -m pip, trying raw pip request"

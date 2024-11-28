@@ -160,7 +160,7 @@ class GifLabel(tk.Label):
         back_image: Image.Image = None,
     ):
         self.image = Image.open(path)
-        self.configure(background="black")
+        self.configure(background="black", foreground="white")
         self.frames: list[ImageTk.PhotoImage] = []
         self.delay = delay
         try:
@@ -216,9 +216,7 @@ class VideoLabel(tk.Label):
         self.delay = 1 / self.fps
 
     def play(self):
-        from types import NoneType
-
-        if not isinstance(self.audio_track, NoneType):
+        if not self.audio_track is None:
             try:
                 import sounddevice
 
@@ -299,11 +297,11 @@ def run():
         resize_factor = size_target / size_source
         return image.resize(
             (int(image.width * resize_factor), int(image.height * resize_factor)),
-            Image.ANTIALIAS,
+
+            Image.Resampling.LANCZOS,
         )
 
     resized_image = resize(image)
-
     do_deny = check_deny()
 
     if do_deny and not gif_bool:
@@ -424,10 +422,13 @@ def run():
                 root,
                 text=caption_text,
                 wraplength=resized_image.width - border_wid_const,
+                bg="#fff",
+                fg="#000"
             )
             captionLabel.place(x=5, y=5)
 
-    submit_button = Button(root, text=SUBMISSION_TEXT, command=die)
+    submit_button = Button(root, text=SUBMISSION_TEXT, command=die, bg="white", fg="black")
+
     submit_button.place(
         x=resized_image.width - 5 - submit_button.winfo_reqwidth(),
         y=resized_image.height - 5 - submit_button.winfo_reqheight(),

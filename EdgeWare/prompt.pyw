@@ -5,7 +5,8 @@ import random as rand
 import tkinter as tk
 from tkinter import *
 from tkinter import messagebox
-import utils
+from utils import utils
+
 
 hasData = False
 textData = {}

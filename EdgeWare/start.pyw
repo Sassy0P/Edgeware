@@ -125,7 +125,6 @@ def load_settings():
             f"failed to parse wallpaper from string, using default value instead\n\tReason: {e}"
         )
 
-
 # Load settings, if first run open options, then reload options from file
 load_settings()
 if int(settings.get("is_configed")) != 1:
@@ -152,7 +151,6 @@ if int(settings.get("pip_installed")) != 1:
         logging.warning(
             "pip should be installed, but issues will occur if installation failed."
         )
-
     settings["pip_installed"] = 1
     config_file.write_text(json.dumps(settings))
 
@@ -160,16 +158,11 @@ if int(settings.get("pip_installed")) != 1:
 def pip_install(packageName: str):
     try:
         logging.info(f"attempting to install {packageName}")
-        subprocess.run([sys.executable, "py" "-m", "install", packageName])
+        subprocess.run([sys.executable, "-m", "pip", "install", packageName])
     except:
         logging.warning(
-            f"failed to install {packageName} using py -m pip, trying raw pip request"
+            f"failed to install {packageName} using python -m pip, trying raw pip request"
         )
-        subprocess.run(["pip", "install", packageName])
-        logging.warning(
-            f"{packageName} should be installed, fatal errors will occur if install failed."
-        )
-
 
 # I liked the emergency fix so much that I just made it import every non-standard lib like that c:
 try:
@@ -241,6 +234,7 @@ except:
     from bs4 import BeautifulSoup
 
 # end non-standard imports
+
 
 AVOID_LIST = ["EdgeWare", "AppData"]  # default avoid list for fill/replace
 FILE_TYPES = ["png", "jpg", "jpeg"]  # recognized file types for replace
@@ -424,6 +418,9 @@ AUDIO = []
 try:
     # TODO: Match only audio files
     for audio_file in Resource.AUDIO.glob("**/*"):
+        audio = str(audio_file)
+        if utils.is_mac():
+            audio = str(audio_file).replace(" ", "%20")
         AUDIO.append(audio_file)
     logging.info("audio resources found")
 except Exception as e:
@@ -469,8 +466,7 @@ def url_select(arg: int) -> str | None:
             rand.randrange(len(WEB_DICT["args"][arg].split(",")))
         ]
     )
-
-
+  
 # class to handle window for tray icon
 class TrayHandler:
     def __init__(self):

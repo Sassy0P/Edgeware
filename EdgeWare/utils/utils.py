@@ -6,17 +6,22 @@ from .dependencies import DEPENDENCIES
 def is_windows() -> bool:
     return "win32" in sys.platform
 
-
 def is_linux() -> bool:
     return "linux" in sys.platform
 
+def is_mac() -> bool:
+    return "darwin" in sys.platform
+  
 
 if is_linux():
     from .linux import *
+elif is_mac():
+    from .mac import *
 elif is_windows():
     from .windows import *
 else:
     raise RuntimeError("Unsupported operating system: {}".format(sys.platform))
+
 
 
 class SCRIPTS(str, Enum):
